@@ -25,9 +25,10 @@ function vgrad(ctx, hex, y0, y1, light = 1.12, dark = 0.82) {
   g.addColorStop(1, mul(hex, dark));
   return g;
 }
+// Ajoute un rectangle arrondi au chemin courant SANS le réinitialiser
+// (permet d'accumuler plusieurs formes avant un seul fill).
 function rrect(ctx, x, y, w, h, r) {
-  if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); return; }
-  ctx.beginPath();
+  if (ctx.roundRect) { ctx.roundRect(x, y, w, h, r); return; }
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
   ctx.arcTo(x + w, y + h, x, y + h, r);
@@ -72,7 +73,7 @@ export function drawAvatar(canvas, av, { pseudo = "", withName = true } = {}) {
   ctx.restore();
 
   const part = (drawShape, hex, y0, y1, light, dark) => {
-    drawShape(); ctx.fillStyle = vgrad(ctx, hex, y0, y1, light, dark); ctx.fill();
+    ctx.beginPath(); drawShape(); ctx.fillStyle = vgrad(ctx, hex, y0, y1, light, dark); ctx.fill();
   };
 
   // cheveux longs (arrière)

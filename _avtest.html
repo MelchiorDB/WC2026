@@ -1,0 +1,10 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>av</title>
+<style>canvas{background:linear-gradient(#0e4a25,#0b3d1e);margin:6px}</style></head><body>
+<div id="g"></div>
+<script type="module">
+import { avatarCanvas } from "./js/avatar.js";
+const s=[{country:"France",number:10,gender:"Homme",skin:"Claire",hair:"Court",hair_color:"Brun",beard:false},
+{country:"Brazil",number:7,gender:"Femme",skin:"Hâlée",hair:"Long",hair_color:"Blond",beard:false},
+{country:"Argentina",number:9,gender:"Homme",skin:"Foncée",hair:"Frisé",hair_color:"Noir",beard:true}];
+for(const a of s){ const c=avatarCanvas(a,156,216,{pseudo:"TEST",withName:true}); document.getElementById("g").append(c); }
+</script></body></html>
