@@ -46,9 +46,13 @@ const MD_COLORS = ["#2563eb", "#7c3aed", "#0d9488"];
 const sign = (a, b) => a > b ? 1 : a < b ? -1 : 0;
 function scorePred(pred, res) {
   if (!pred || !res) return { pts: 0, exact: false };
+  // mauvais vainqueur / nul => 0
   if (sign(pred[0], pred[1]) !== sign(res[0], res[1])) return { pts: 0, exact: false };
-  const exact = pred[0] === res[0] && pred[1] === res[1];
-  return { pts: exact ? 3 : 1, exact };
+  // score exact => 3
+  if (pred[0] === res[0] && pred[1] === res[1]) return { pts: 3, exact: true };
+  // bon résultat : 2 si à 1 but près du vrai score, sinon 1
+  const dist = Math.abs(pred[0] - res[0]) + Math.abs(pred[1] - res[1]);
+  return { pts: dist <= 1 ? 2 : 1, exact: false };
 }
 function standings() {
   const rows = S.players.map(p => {
@@ -377,7 +381,7 @@ function tabPlayers() {
 }
 
 // ---------- dialog avatar (mon avatar uniquement) ----------
-function avatarDialog() {
+function avatarDialog(firstTime = false) {
   const cur = { country: null, number: 10, gender: "Homme", skin: "Claire", hair: "Court", hair_color: "Brun", beard: false, ...(S.session.avatar || {}) };
   const countries = [["", "(Couleur neutre)"], ...Object.entries(TEAMS).map(([id, t]) => [id, t.fr]).sort((a, b) => a[1].localeCompare(b[1]))];
   const sel = (val, opts, onch) => el("select", { onchange: onch }, ...opts.map(o => el("option", { value: Array.isArray(o) ? o[0] : o, selected: (Array.isArray(o) ? o[0] : o) === val ? "" : null }, Array.isArray(o) ? o[1] : o)));
@@ -392,10 +396,11 @@ function avatarDialog() {
   num.addEventListener("input", () => { cur.number = Math.max(0, Math.min(99, +num.value || 0)); draw(); });
   const beard = el("input", { type: "checkbox" }); beard.checked = cur.beard;
   beard.addEventListener("change", () => { cur.beard = beard.checked; draw(); });
-  const overlay = el("div", { class: "modal", onclick: e => { if (e.target === overlay) overlay.remove(); } },
+  const overlay = el("div", { class: "modal", onclick: e => { if (!firstTime && e.target === overlay) overlay.remove(); } },
     el("div", { class: "modal-card" },
       el("div", { class: "form" },
-        el("b", {}, "Avatar de " + S.session.name),
+        el("b", {}, firstTime ? `Bienvenue ${S.session.name} ! Crée ton avatar` : "Avatar de " + S.session.name),
+        firstTime ? el("div", { class: "note" }, "Personnalise ton joueur, puis valide pour commencer à pronostiquer.") : null,
         el("label", {}, "Pays (maillot)", country),
         el("label", {}, "Genre", gender),
         el("label", {}, "Couleur de peau", skin),
@@ -404,8 +409,8 @@ function avatarDialog() {
         el("label", {}, "Numéro", num),
         el("label", { style: "flex-direction:row;align-items:center;gap:6px" }, beard, "Barbe"),
         el("div", { class: "actions" },
-          el("button", { class: "accent", onclick: saveAvatar }, "Valider"),
-          el("button", { class: "small", onclick: () => overlay.remove() }, "Annuler"))),
+          el("button", { class: "accent", onclick: saveAvatar }, firstTime ? "Créer mon profil" : "Valider"),
+          firstTime ? null : el("button", { class: "small", onclick: () => overlay.remove() }, "Annuler"))),
       prev));
   async function saveAvatar() {
     const r = await api.setAvatar(S.session.name, S.session.pin, cur);
@@ -479,6 +484,9 @@ async function doLogin(name, pin) {
   await loadAll();
   $("#login").hidden = true; $("#app").hidden = false;
   renderTabs(); renderTab(); drawMe();
+  // 1ère connexion (compte créé ou avatar vide) : créer son profil/avatar direct
+  const fresh = r.new || !S.session.avatar || Object.keys(S.session.avatar).length === 0;
+  if (fresh) { S.tab = "players"; renderTabs(); renderTab(); setTimeout(() => avatarDialog(true), 250); }
   return true;
 }
 
