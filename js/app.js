@@ -6,6 +6,7 @@ import { TEAMS, GROUPS, KO_R32, SKIN_TONES, HAIR_COLORS, HAIR_STYLES, GENDERS } 
 import { FLAG } from "./config.js";
 import * as api from "./api.js";
 import { drawAvatar, avatarCanvas, avatarColors } from "./avatar.js";
+import { spinTrophy, drawTrophy } from "./trophy.js";
 
 const S = {
   session: null,                 // {name, pin, isAdmin, avatar}
@@ -242,16 +243,19 @@ function tabBoard() {
   rows.forEach((r, i) => {
     const cls = i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "";
     const cv = avatarCanvas(r.avatar, 30, 42, { withName: false });
-    const lead = i === 0 && r.total > 0 ? " 🏆" : "";
+    const nameCell = el("div", { class: "av" }, `${r.name}  N°${(r.avatar && r.avatar.number) ?? 10}`);
+    if (i === 0 && r.total > 0) {
+      const tc = el("canvas", { width: 26, height: 34 }); nameCell.append(tc); spinTrophy(tc);
+    }
     table.append(el("tr", { class: cls },
       el("td", {}, cv), el("td", { class: "c" }, String(i + 1)),
-      el("td", {}, el("div", { class: "av" }, `${r.name}  N°${(r.avatar && r.avatar.number) ?? 10}${lead}`)),
+      el("td", {}, nameCell),
       el("td", { class: "c" }, el("b", {}, String(r.total))),
       el("td", { class: "c" }, String(r.exact)), el("td", { class: "c" }, String(r.good))));
   });
   // animation de but si MON total GÉNÉRAL a augmenté depuis la dernière visite
   if (scope === "Général") {
-    if (me && me.total > prevTotal) setTimeout(() => goalCelebration(me), 350);
+    if (me && me.total > prevTotal) setTimeout(() => goalCelebration(me, me === rows[0]), 350);
     if (me) localStorage.setItem("pron_total_" + S.session.name, me.total);
   }
   return el("div", {},
@@ -485,7 +489,7 @@ function avatarDialog(firstTime = false) {
 }
 
 // ---------- animation de but ----------
-function goalCelebration(player) {
+function goalCelebration(player, isLeader = false) {
   const W = 460, H = 360;
   const cv = el("canvas", { width: W, height: H });
   const ov = el("div", { id: "goal-overlay", onclick: () => ov.remove() }, cv);
@@ -499,6 +503,7 @@ function goalCelebration(player) {
     ctx.fillStyle = "#0b3d1e"; ctx.fillRect(0, 0, W, H);
     for (let i = 0; i < W; i += 56) { ctx.fillStyle = (i / 56) % 2 ? "#0b3d1e" : "#0e4a25"; ctx.fillRect(i, 0, 56, H); }
     ctx.drawImage(avC, W / 2 - 75, H - 230);
+    if (isLeader) drawTrophy(ctx, W / 2 + 56, H - 150, 66, t / 180);   // coupe dans la main du leader
     for (const p of parts) { p.x += p.vx; p.y += p.vy; p.vy += .12; ctx.fillStyle = p.c; ctx.fillRect(p.x, p.y, 7, 11); }
     ctx.fillStyle = "#fde047"; ctx.font = "bold 30px sans-serif"; ctx.textAlign = "center";
     ctx.fillText("BUT !", W / 2, 50);
@@ -546,6 +551,7 @@ async function doLogin(name, pin) {
   localStorage.setItem("pron_session", JSON.stringify(S.session));
   await loadAll();
   $("#login").hidden = true; $("#app").hidden = false;
+  const tt = $("#top-trophy"); if (tt && !tt._spin) { tt._spin = true; spinTrophy(tt); }
   renderTabs(); renderTab(); drawMe();
   // 1ère connexion (compte créé ou avatar vide) : créer son profil/avatar direct
   const fresh = r.new || !S.session.avatar || Object.keys(S.session.avatar).length === 0;
@@ -554,6 +560,7 @@ async function doLogin(name, pin) {
 }
 
 async function main() {
+  const lt = $("#login-trophy"); if (lt) spinTrophy(lt);   // coupe qui tourne (login)
   if (!api.configured()) { $("#login-config").hidden = false; return; }
   $("#login-btn").addEventListener("click", () =>
     doLogin($("#login-name").value.trim(), $("#login-pin").value));

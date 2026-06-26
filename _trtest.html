@@ -1,0 +1,8 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>tr</title>
+<style>body{background:#1e3a8a}canvas{background:#2563eb;margin:4px;border-radius:8px}</style></head><body>
+<div id="g"></div>
+<script type="module">
+import { drawTrophy } from "./js/trophy.js";
+for(let i=0;i<6;i++){ const c=document.createElement("canvas"); c.width=90;c.height=120;
+  drawTrophy(c.getContext("2d"),45,60,104, i*Math.PI/6); document.getElementById("g").append(c); }
+</script></body></html>
