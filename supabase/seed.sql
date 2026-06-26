@@ -1,3 +1,5 @@
+set search_path = public, extensions;
+
 -- Migration des pronos existants (à exécuter APRÈS schema.sql)
 -- PIN par défaut de chaque joueur : 0000  (à changer dans l'app)
 

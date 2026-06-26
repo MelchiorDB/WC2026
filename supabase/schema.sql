@@ -10,7 +10,7 @@
 --   - le PIN n'est jamais exposé (hash bcrypt, colonne non lisible).
 -- ============================================================================
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 -- ---------- Tables ----------------------------------------------------------
 create table if not exists app_config (
@@ -75,7 +75,7 @@ create policy predictions_read on predictions for select using (
 
 -- ---------- Fonctions utilitaires -------------------------------------------
 create or replace function _player_by_pin(p_name text, p_pin text)
-returns players language sql stable security definer set search_path = public as $$
+returns players language sql stable security definer set search_path = public, extensions as $$
   select * from players
   where name = p_name and pin_hash = crypt(p_pin, pin_hash)
   limit 1;
@@ -83,7 +83,7 @@ $$;
 
 -- ---------- Inscription / connexion ----------------------------------------
 create or replace function register_or_login(p_name text, p_pin text)
-returns jsonb language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare pl players;
 begin
   p_name := trim(p_name);
@@ -109,7 +109,7 @@ end;
 $$;
 
 create or replace function change_pin(p_name text, p_old text, p_new text)
-returns jsonb language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare pl players;
 begin
   pl := _player_by_pin(p_name, p_old);
@@ -122,7 +122,7 @@ $$;
 
 -- ---------- Avatar ----------------------------------------------------------
 create or replace function set_avatar(p_name text, p_pin text, p_avatar jsonb)
-returns jsonb language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare pl players;
 begin
   pl := _player_by_pin(p_name, p_pin);
@@ -135,7 +135,7 @@ $$;
 -- ---------- Pronostic (ANTI-TRICHE : verrou au coup d'envoi) ----------------
 create or replace function set_prediction(p_name text, p_pin text, p_match text,
                                           p_home int, p_away int)
-returns jsonb language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare pl players; m matches; ts timestamptz := now();
 begin
   pl := _player_by_pin(p_name, p_pin);
@@ -163,7 +163,7 @@ end;
 $$;
 
 create or replace function delete_prediction(p_name text, p_pin text, p_match text)
-returns jsonb language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare pl players; m matches;
 begin
   pl := _player_by_pin(p_name, p_pin);
@@ -180,7 +180,7 @@ $$;
 -- mes propres pronos (y compris ceux NON encore visibles publiquement)
 create or replace function get_my_predictions(p_name text, p_pin text)
 returns table(match_id text, home int, away int, created_at timestamptz, updated_at timestamptz)
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, extensions as $$
 declare pl players;
 begin
   pl := _player_by_pin(p_name, p_pin);
@@ -193,7 +193,7 @@ $$;
 -- ---------- Résultats (ADMIN seulement) -------------------------------------
 create or replace function set_result(p_name text, p_pin text, p_match text,
                                       p_home int, p_away int)
-returns jsonb language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare pl players;
 begin
   pl := _player_by_pin(p_name, p_pin);
@@ -204,7 +204,7 @@ end;
 $$;
 
 create or replace function set_kickoff(p_name text, p_pin text, p_match text, p_kick timestamptz)
-returns jsonb language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare pl players;
 begin
   pl := _player_by_pin(p_name, p_pin);
@@ -216,7 +216,7 @@ $$;
 
 -- devenir admin avec le secret stocké dans app_config('admin_secret')
 create or replace function claim_admin(p_name text, p_pin text, p_secret text)
-returns jsonb language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare pl players; sec text;
 begin
   pl := _player_by_pin(p_name, p_pin);
