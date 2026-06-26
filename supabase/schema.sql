@@ -70,6 +70,10 @@ create policy predictions_read on predictions for select using (
   exists (select 1 from matches m where m.id = predictions.match_id and m.kickoff <= now())
 );
 
+-- privilèges de lecture (la RLS restreint les lignes, mais le rôle a besoin du SELECT)
+grant select on matches to anon, authenticated;
+grant select on predictions to anon, authenticated;
+
 -- app_config : non lisible par les clients (admin_secret reste secret)
 -- (aucune policy => aucune lecture côté anon)
 
