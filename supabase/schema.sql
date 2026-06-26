@@ -218,6 +218,19 @@ begin
 end;
 $$;
 
+-- définir les équipes d'un match de phase finale (ADMIN)
+create or replace function set_match_teams(p_name text, p_pin text, p_match text,
+                                          p_home text, p_away text)
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare pl players;
+begin
+  pl := _player_by_pin(p_name, p_pin);
+  if pl.id is null or not pl.is_admin then return jsonb_build_object('error','admin'); end if;
+  update matches set home = p_home, away = p_away where id = p_match;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
 -- devenir admin avec le secret stocké dans app_config('admin_secret')
 create or replace function claim_admin(p_name text, p_pin text, p_secret text)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
@@ -234,7 +247,7 @@ $$;
 
 -- droits d'exécution pour les clients web
 grant execute on function register_or_login, change_pin, set_avatar, set_prediction,
-  delete_prediction, get_my_predictions, set_result, set_kickoff, claim_admin
+  delete_prediction, get_my_predictions, set_result, set_kickoff, set_match_teams, claim_admin
   to anon, authenticated;
 
 -- secret admin par défaut (À CHANGER) : permet à un joueur de devenir organisateur

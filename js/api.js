@@ -55,3 +55,5 @@ export const setResult = (name, pin, match, home, away) =>
   rpc("set_result", { p_name: name, p_pin: pin, p_match: match, p_home: home, p_away: away });
 export const setKickoff = (name, pin, match, kickoffIso) =>
   rpc("set_kickoff", { p_name: name, p_pin: pin, p_match: match, p_kick: kickoffIso });
+export const setMatchTeams = (name, pin, match, home, away) =>
+  rpc("set_match_teams", { p_name: name, p_pin: pin, p_match: match, p_home: home, p_away: away });

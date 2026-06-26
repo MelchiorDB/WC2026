@@ -26,6 +26,8 @@ code{background:#0001;padding:1px 4px;border-radius:4px}
 
 /* topbar */
 .topbar{display:flex;align-items:center;gap:12px;background:var(--accent);color:#fff;padding:8px 16px}
+.logo{height:34px;width:auto;background:#fff;border-radius:8px;padding:2px}
+.logo-big{height:64px;width:auto;margin:0 auto 4px}
 .brand{font-size:18px;font-weight:800;letter-spacing:.3px}
 .brand span{font-weight:600;opacity:.9}
 .spacer{flex:1}

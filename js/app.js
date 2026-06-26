@@ -41,6 +41,18 @@ const locked = m => Date.parse(m.kickoff) <= Date.now();
 const result = m => (m.home_score != null && m.away_score != null) ? [m.home_score, m.away_score] : null;
 const GROUP_COLORS = ["#2563eb", "#7c3aed", "#db2777", "#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0d9488", "#0891b2", "#4f46e5", "#9333ea", "#be123c"];
 const MD_COLORS = ["#2563eb", "#7c3aed", "#0d9488"];
+const KO_ROUNDS = ["16es", "8es", "Quarts", "Demies", "3e place", "Finale"];
+const isKO = m => KO_ROUNDS.includes(m.grp);
+const isReal = x => !!TEAMS[x];
+const predictable = m => isReal(m.home) && isReal(m.away);   // équipes connues
+function koLabel(x) {
+  if (isReal(x)) return teamFr(x);
+  if (/^[12][A-L]$/.test(x)) return (x[0] === "1" ? "1er " : "2e ") + "gr. " + x[1];
+  if (x === "3rd") return "3e ?";
+  let mt = x.match(/^V(\d+)$/); if (mt) return "Vainq. M" + mt[1];
+  mt = x.match(/^P(\d+)$/); if (mt) return "Perdant M" + mt[1];
+  return x;
+}
 
 // ---------- scoring (port de scoring.py) ----------
 const sign = (a, b) => a > b ? 1 : a < b ? -1 : 0;
@@ -54,11 +66,13 @@ function scorePred(pred, res) {
   const dist = Math.abs(pred[0] - res[0]) + Math.abs(pred[1] - res[1]);
   return { pts: dist <= 1 ? 2 : 1, exact: false };
 }
-function standings() {
+function standings(filterFn) {
+  const flt = filterFn || (() => true);
   const rows = S.players.map(p => {
     const pr = S.preds[p.id] || {};
     let total = 0, exact = 0, good = 0;
     for (const m of S.matches) {
+      if (!flt(m)) continue;
       const res = result(m); if (!res) continue;
       const pred = pr[m.id]; if (!pred) continue;
       const { pts, exact: ex } = scorePred([pred.home, pred.away], res);
@@ -125,21 +139,30 @@ function grouped(ms) {
   if (S.view === "Par jour") {
     const by = {};
     for (const m of ms) (by[m.kickoff.slice(0, 10)] ||= []).push(m);
-    return Object.entries(by).map(([d, list], i) => ({
-      title: `${dateFr(d)}  ·  Journée ${list[0].matchday}`, color: MD_COLORS[(list[0].matchday - 1) % 3], list,
-    }));
+    return Object.entries(by).map(([d, list]) => {
+      const k = isKO(list[0]);
+      return {
+        title: `${dateFr(d)}  ·  ${k ? list[0].grp : "Journée " + list[0].matchday}`,
+        color: k ? "#0f766e" : MD_COLORS[(list[0].matchday - 1) % 3], list,
+      };
+    });
   }
-  return Object.keys(GROUPS).map((g, i) => ({
+  const blocks = Object.keys(GROUPS).map((g, i) => ({
     title: `Groupe ${g}`, color: GROUP_COLORS[i % 12], list: ms.filter(m => m.grp === g),
   })).filter(b => b.list.length);
+  for (const r of KO_ROUNDS) {
+    const list = ms.filter(m => m.grp === r);
+    if (list.length) blocks.push({ title: "Phase finale - " + r, color: "#0f766e", list });
+  }
+  return blocks;
 }
 
 // ---------- onglet Pronostics ----------
 function tabPred() {
   const wrap = el("div", {});
   wrap.append(optBar(null));
-  wrap.append(el("div", { class: "note" }, "Les scores se verrouillent au coup d'envoi (heure serveur). Ton pronostic est enregistré avec l'heure exacte. Les pronos des autres restent cachés jusqu'au coup d'envoi."));
-  const ms = filteredMatches();
+  wrap.append(el("div", { class: "note" }, "Les scores se verrouillent au coup d'envoi (heure serveur). Ton pronostic est enregistré avec l'heure exacte. Les pronos des autres restent cachés jusqu'au coup d'envoi. Les matchs de phase finale apparaissent dès que les équipes sont connues."));
+  const ms = filteredMatches().filter(predictable);   // groupes + KO dont les équipes sont connues
   if (!ms.length) { wrap.append(el("p", { class: "muted" }, "Aucun match à venir.")); return wrap; }
   for (const b of grouped(ms)) {
     const block = el("div", { class: "block" }, el("h3", { style: `background:${b.color}` }, b.title));
@@ -206,26 +229,34 @@ function predRow(m) {
 
 // ---------- onglet Classement ----------
 function tabBoard() {
-  const rows = standings();
+  const scopes = { "Général": null, "Poules": m => !isKO(m), "Phase finale": isKO };
+  const scope = scopes[S.boardScope] !== undefined ? S.boardScope : "Général";
+  const rows = standings(scopes[scope]);
   const prevTotal = +(localStorage.getItem("pron_total_" + S.session.name) || 0);
   const me = rows.find(r => r.name === S.session.name);
+  const sel = el("select", { onchange: e => { S.boardScope = e.target.value; renderTab(); } },
+    ...Object.keys(scopes).map(s => el("option", { value: s, selected: s === scope ? "" : null }, s)));
   const table = el("table", { class: "board" },
     el("tr", {}, el("th", {}, ""), el("th", {}, "Rang"), el("th", {}, "Joueur"),
       el("th", { class: "c" }, "Points"), el("th", { class: "c" }, "Exacts"), el("th", { class: "c" }, "Bons")));
   rows.forEach((r, i) => {
     const cls = i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "";
     const cv = avatarCanvas(r.avatar, 30, 42, { withName: false });
+    const lead = i === 0 && r.total > 0 ? " 🏆" : "";
     table.append(el("tr", { class: cls },
       el("td", {}, cv), el("td", { class: "c" }, String(i + 1)),
-      el("td", {}, el("div", { class: "av" }, `${r.name}  N°${(r.avatar && r.avatar.number) ?? 10}`)),
+      el("td", {}, el("div", { class: "av" }, `${r.name}  N°${(r.avatar && r.avatar.number) ?? 10}${lead}`)),
       el("td", { class: "c" }, el("b", {}, String(r.total))),
       el("td", { class: "c" }, String(r.exact)), el("td", { class: "c" }, String(r.good))));
   });
-  // animation de but si MON total a augmenté depuis la dernière visite
-  if (me && me.total > prevTotal) setTimeout(() => goalCelebration(me), 350);
-  if (me) localStorage.setItem("pron_total_" + S.session.name, me.total);
-  return el("div", {}, el("h2", {}, "Classement général"),
-    el("div", { class: "note" }, "Podium or / argent / bronze. Calculé à partir des résultats et des pronos déjà révélés."), table);
+  // animation de but si MON total GÉNÉRAL a augmenté depuis la dernière visite
+  if (scope === "Général") {
+    if (me && me.total > prevTotal) setTimeout(() => goalCelebration(me), 350);
+    if (me) localStorage.setItem("pron_total_" + S.session.name, me.total);
+  }
+  return el("div", {},
+    el("div", { class: "optbar" }, el("h2", {}, "Classement"), el("span", {}, "Tableau :"), sel),
+    el("div", { class: "note" }, "Podium or / argent / bronze. « Poules » = points de la phase de groupes, « Phase finale » = points des matchs à élimination directe."), table);
 }
 
 // ---------- onglet Résultats ----------
@@ -233,36 +264,74 @@ function tabResults() {
   const wrap = el("div", {});
   wrap.append(el("h2", {}, "Résultats"));
   if (!S.session.isAdmin) {
-    wrap.append(el("div", { class: "note" }, "Seul l'organisateur (admin) saisit les résultats."));
+    wrap.append(el("div", { class: "note" }, "Seul l'organisateur (admin) saisit les résultats et définit les équipes de la phase finale."));
   } else {
-    const btn = el("button", { class: "accent", onclick: fetchResultsWeb }, "Mettre à jour depuis le web");
-    wrap.append(el("div", { class: "optbar" }, btn,
-      el("span", { class: "note" }, "Saisis les scores réels (admin). Vide = non joué.")));
+    wrap.append(el("div", { class: "optbar" },
+      el("button", { class: "accent", onclick: fetchResultsWeb }, "Mettre à jour depuis le web"),
+      el("button", { class: "small", onclick: autoFillKO }, "Phase finale : remplir 1ers/2es"),
+      el("span", { class: "note" }, "Vide = non joué.")));
   }
   for (const b of grouped(S.matches)) {
     const block = el("div", { class: "block" }, el("h3", { style: `background:${b.color}` }, b.title));
-    for (const m of b.list) {
-      const res = result(m);
-      const ih = el("input", { type: "number", min: 0, max: 99, value: res ? res[0] : "" });
-      const ia = el("input", { type: "number", min: 0, max: 99, value: res ? res[1] : "" });
-      if (!S.session.isAdmin) ih.disabled = ia.disabled = true;
-      const save = async () => {
-        if (ih.value === "" || ia.value === "") return;
-        const r = await api.setResult(S.session.name, S.session.pin, m.id, +ih.value, +ia.value);
-        if (r.error) return toast("Admin requis.", "e");
-        m.home_score = +ih.value; m.away_score = +ia.value; toast("Résultat enregistré", "g");
-      };
-      ih.addEventListener("change", save); ia.addEventListener("change", save);
-      block.append(el("div", { class: "row" },
-        el("div", { class: "when" }, dateShort(m.kickoff)),
-        el("div", { class: "team" }, flag(m.home), el("span", {}, teamFr(m.home))),
-        el("div", { class: "score" }, ih, el("b", {}, "-"), ia),
-        el("div", { class: "team away" }, flag(m.away), el("span", {}, teamFr(m.away))),
-        el("div", {})));
-    }
+    for (const m of b.list) block.append(resultRow(m));
     wrap.append(block);
   }
   return wrap;
+}
+function teamCellRO(x, away) {
+  const cls = "team" + (away ? " away" : "");
+  return isReal(x) ? el("div", { class: cls }, flag(x), el("span", {}, teamFr(x)))
+                   : el("div", { class: cls }, el("span", { class: "muted" }, koLabel(x)));
+}
+function teamSelect(m, side) {
+  const cur = side === "home" ? m.home : m.away;
+  const list = Object.entries(TEAMS).map(([id, t]) => [id, t.fr]).sort((a, b) => a[1].localeCompare(b[1]));
+  const sel = el("select", {},
+    el("option", { value: cur, selected: "" }, isReal(cur) ? teamFr(cur) : koLabel(cur)),
+    ...list.filter(([id]) => id !== cur).map(([id, fr]) => el("option", { value: id }, fr)));
+  sel.addEventListener("change", async () => {
+    const home = side === "home" ? sel.value : m.home, away = side === "away" ? sel.value : m.away;
+    const r = await api.setMatchTeams(S.session.name, S.session.pin, m.id, home, away);
+    if (r.error) return toast("Admin requis", "e");
+    m.home = home; m.away = away; toast("Équipes mises à jour", "g"); renderTab();
+  });
+  return el("div", { class: "team" + (side === "away" ? " away" : "") }, sel);
+}
+function resultRow(m) {
+  const res = result(m);
+  const ih = el("input", { type: "number", min: 0, max: 99, value: res ? res[0] : "" });
+  const ia = el("input", { type: "number", min: 0, max: 99, value: res ? res[1] : "" });
+  if (!S.session.isAdmin) ih.disabled = ia.disabled = true;
+  const save = async () => {
+    if (ih.value === "" || ia.value === "") return;
+    const r = await api.setResult(S.session.name, S.session.pin, m.id, +ih.value, +ia.value);
+    if (r.error) return toast("Admin requis.", "e");
+    m.home_score = +ih.value; m.away_score = +ia.value; toast("Résultat enregistré", "g");
+  };
+  ih.addEventListener("change", save); ia.addEventListener("change", save);
+  const koAdmin = isKO(m) && S.session.isAdmin;
+  return el("div", { class: "row" },
+    el("div", { class: "when" }, dateShort(m.kickoff)),
+    koAdmin ? teamSelect(m, "home") : teamCellRO(m.home, false),
+    el("div", { class: "score" }, ih, el("b", {}, "-"), ia),
+    koAdmin ? teamSelect(m, "away") : teamCellRO(m.away, true),
+    el("div", {}));
+}
+async function autoFillKO() {
+  const quals = {};
+  for (const g of Object.keys(GROUPS)) { const t = groupTable(g); if (t.complete) quals[g] = { "1": t.order[0], "2": t.order[1] }; }
+  const resolve = lab => { const mt = /^([12])([A-L])$/.exec(lab); return (mt && quals[mt[2]]) ? quals[mt[2]][mt[1]] : null; };
+  let count = 0;
+  for (const m of S.matches.filter(isKO)) {
+    const nh = resolve(m.home), na = resolve(m.away);
+    if (nh || na) {
+      const home = nh || m.home, away = na || m.away;
+      const r = await api.setMatchTeams(S.session.name, S.session.pin, m.id, home, away);
+      if (r.ok) { m.home = home; m.away = away; count++; }
+    }
+  }
+  toast(count ? `${count} match(s) renseigné(s)` : "Groupes pas encore terminés", "g");
+  renderTab();
 }
 async function fetchResultsWeb() {
   toast("Recherche en ligne…");
@@ -296,33 +365,26 @@ function sameTeams(m, h, a) {
   return hit(m.home) && hit(m.away);
 }
 
-// ---------- onglet Phase finale ----------
+// ---------- onglet Phase finale (tableau depuis la base) ----------
 function tabBracket() {
-  const quals = {};
-  for (const g of Object.keys(GROUPS)) { const t = groupTable(g); if (t.complete) quals[g] = { "1": t.order[0], "2": t.order[1], "3": t.order[2] }; }
-  const slot = lab => {
-    if (lab === "3rd") return { txt: "3e (à définir)", real: false };
-    const q = quals[lab[1]];
-    if (q && q[lab[0]]) return { txt: teamFr(q[lab[0]]), real: true };
-    return { txt: (lab[0] === "1" ? "1er" : "2e") + " groupe " + lab[1], real: false };
-  };
-  const colNames = ["Seizièmes", "Huitièmes", "Quarts", "Demies", "Finale"];
   const wrap = el("div", {});
-  wrap.append(el("h2", {}, "Tableau final (provisoire)"),
-    el("div", { class: "note" }, "Les seizièmes se remplissent quand un groupe est terminé. « 3e » = une des meilleures troisièmes."));
+  wrap.append(el("h2", {}, "Tableau phase finale"));
+  wrap.append(el("div", { class: "note" }, "Se remplit au fil du tournoi (l'admin définit les équipes). Pronostique les scores dans « Mes pronostics » dès que les deux équipes sont connues."));
   const br = el("div", { class: "bracket" });
-  // colonne seizièmes
-  const c0 = el("div", { class: "bcol" }, el("h4", {}, "Seizièmes (16)"));
-  for (const ko of KO_R32) {
-    const a = slot(ko.a), b = slot(ko.b);
-    c0.append(el("div", { class: "bbox" },
-      el("div", { class: a.real ? "real" : "" }, a.txt), el("div", { class: b.real ? "real" : "" }, b.txt)));
-  }
-  br.append(c0);
-  for (let c = 1; c < 5; c++) {
-    const n = [8, 4, 2, 1][c - 1];
-    const col = el("div", { class: "bcol" }, el("h4", {}, colNames[c] + (n > 1 ? ` (${n})` : "")));
-    for (let i = 0; i < n; i++) col.append(el("div", { class: "bbox" }, el("div", {}, "-"), el("div", {}, "-")));
+  for (const round of KO_ROUNDS) {
+    const list = S.matches.filter(m => m.grp === round)
+      .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+    if (!list.length) continue;
+    const col = el("div", { class: "bcol" }, el("h4", {}, round));
+    for (const m of list) {
+      const res = result(m);
+      const line = x => el("div", { class: isReal(x) ? "real" : "" },
+        isReal(x) ? teamFr(x) : koLabel(x));
+      const box = el("div", { class: "bbox" }, line(m.home), line(m.away));
+      if (res) box.append(el("div", { class: "muted", style: "font-size:11px" }, `${res[0]} - ${res[1]}`));
+      else box.append(el("div", { class: "muted", style: "font-size:10px" }, dateShort(m.kickoff)));
+      col.append(box);
+    }
     br.append(col);
   }
   wrap.append(br);
@@ -348,7 +410,8 @@ function tabHist() {
   const ids = Object.keys(pr).map(id => S.matchById[id]).filter(Boolean).sort((a, b) => a.kickoff.localeCompare(b.kickoff));
   const by = {}; for (const m of ids) (by[m.kickoff.slice(0, 10)] ||= []).push(m);
   for (const [d, list] of Object.entries(by)) {
-    const block = el("div", { class: "block" }, el("h3", { style: `background:${MD_COLORS[(list[0].matchday - 1) % 3]}` }, `${dateFr(d)} · Journée ${list[0].matchday}`));
+    const k0 = isKO(list[0]);
+    const block = el("div", { class: "block" }, el("h3", { style: `background:${k0 ? "#0f766e" : MD_COLORS[(list[0].matchday - 1) % 3]}` }, `${dateFr(d)} · ${k0 ? list[0].grp : "Journée " + list[0].matchday}`));
     for (const m of list) {
       const pred = pr[m.id], res = result(m);
       let pill;
